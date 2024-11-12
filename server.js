@@ -10,10 +10,23 @@ const mongoose = require("mongoose");
 const app = express();
 
 //middleware
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://simplenotes.onrender.com",
+];
+
 // Use CORS middleware
 app.use(
   cors({
-    origin: "http://localhost:3000", // Allow only this origin
+    origin: function (origin, callback) {
+      // Check if the origin is in the allowed list or allow requests with no origin (for example, mobile apps or Postman)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
   })
 );
 
