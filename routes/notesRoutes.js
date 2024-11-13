@@ -16,10 +16,16 @@ router.get("/search", authenticateToken, notesController.GetNotesByTitle);
 // Get a single note by ID (check if the note belongs to the current user)
 router.get("/:id", authenticateToken, notesController.GetSingleNote);
 
+// New route to delete all notes for the authenticated user
+router.delete("/deleteAllNotesForUser", authenticateToken, notesController.DeleteAllNotesForUser);
+
 // Delete a note by ID (ensure it belongs to the current user)
 router.delete("/:id", authenticateToken, notesController.DeleteSingleNote);
 
 // Update a note by ID (ensure it belongs to the current user)
 router.patch("/:id", authenticateToken, notesController.UpdateSingleNote);
+
+
+
 
 module.exports = router;

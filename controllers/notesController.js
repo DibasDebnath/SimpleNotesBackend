@@ -1,7 +1,8 @@
 const { default: mongoose } = require("mongoose");
 const Note = require("../models/noteModel");
+const User = require("../models/userModel");
 
-
+const bcrypt = require("bcryptjs");
 
 
 
@@ -243,16 +244,59 @@ const UpdateSingleNote = async (req, res) => {
 
 
 
+const DeleteAllNotesForUser = async (req, res) => {
+  const { password } = req.body; // Get the password from the request body
+  const userId = req.user.id; // Get the userId from the authenticated user
+  
+  try {
+    // Find the user by userId
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Compare the provided password with the stored hashed password
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ error: "Incorrect password" });
+    }
+
+    // If password matches, delete all notes for this user
+    const result = await Note.deleteMany({ userId });
+
+    // If no notes were deleted, return a 404 response
+    if (result.deletedCount === 0) {
+      return res.status(200).json({ message: "No notes found for this user" });
+    }
+
+    res.status(200).json({
+      message: "All notes deleted successfully",
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("Error deleting notes:", error);
+    res
+      .status(500)
+      .json({ message: "Error deleting notes", details: error.message });
+  }
+};
+
+
+
+
 
 
 
 
 
 module.exports = {
-    GetNotes,
-    CreateNote,
-    GetSingleNote,
-    GetNotesByTitle,
-    DeleteSingleNote,
-    UpdateSingleNote,
+  GetNotes,
+  CreateNote,
+  GetSingleNote,
+  GetNotesByTitle,
+  DeleteSingleNote,
+  UpdateSingleNote,
+  DeleteAllNotesForUser,
 };
