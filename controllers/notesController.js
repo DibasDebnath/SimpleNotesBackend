@@ -4,16 +4,26 @@ const User = require("../models/userModel");
 
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
+require("dotenv").config();
+
+const MASTER_KEY = process.env.MASTER_KEY;
+
+// Helper function to create a consistent 32-byte key from MASTER_KEY and userKey
+function getEncryptionKey(userKey) {
+  return crypto
+    .createHash("sha256")
+    .update(MASTER_KEY + userKey)
+    .digest();
+}
 
 function encrypt(text, userKey) {
   const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv(
-    "aes-256-cbc",
-    Buffer.from(userKey, "hex"),
-    iv
-  );
+  const key = getEncryptionKey(userKey); // Generate a 32-byte key from MASTER_KEY and userKey
+
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
   let encrypted = cipher.update(text, "utf-8", "hex");
   encrypted += cipher.final("hex");
+
   return `${iv.toString("hex")}:${encrypted}`; // Concatenate IV and encrypted text
 }
 
@@ -21,20 +31,17 @@ function decrypt(encryptedText, userKey) {
   try {
     const [ivHex, encryptedData] = encryptedText.split(":");
     const ivBuffer = Buffer.from(ivHex, "hex");
-    const decipher = crypto.createDecipheriv(
-      "aes-256-cbc",
-      Buffer.from(userKey, "hex"),
-      ivBuffer
-    );
+    const key = getEncryptionKey(userKey); // Generate the same key for decryption
+
+    const decipher = crypto.createDecipheriv("aes-256-cbc", key, ivBuffer);
     let decrypted = decipher.update(encryptedData, "hex", "utf-8");
     decrypted += decipher.final("utf-8");
+
     return decrypted;
   } catch {
     return encryptedText;
   }
-  
 }
-
 
 const GetNotes = async (req, res) => {
   try {
