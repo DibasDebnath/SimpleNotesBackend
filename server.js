@@ -46,6 +46,10 @@ app.get("/", (req, res) => {
   res.json({ answer: "Welcome" });
 });
 
+app.get("*", (req, res) => {
+  res.status(404).json({ error: "Request Invalid" });
+});
+
 mongoose
   .connect(process.env.MONG_URI)
   .then(() => {
