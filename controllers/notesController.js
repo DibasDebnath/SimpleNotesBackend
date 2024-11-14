@@ -3,7 +3,37 @@ const Note = require("../models/noteModel");
 const User = require("../models/userModel");
 
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
+function encrypt(text, userKey) {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv(
+    "aes-256-cbc",
+    Buffer.from(userKey, "hex"),
+    iv
+  );
+  let encrypted = cipher.update(text, "utf-8", "hex");
+  encrypted += cipher.final("hex");
+  return `${iv.toString("hex")}:${encrypted}`; // Concatenate IV and encrypted text
+}
+
+function decrypt(encryptedText, userKey) {
+  try {
+    const [ivHex, encryptedData] = encryptedText.split(":");
+    const ivBuffer = Buffer.from(ivHex, "hex");
+    const decipher = crypto.createDecipheriv(
+      "aes-256-cbc",
+      Buffer.from(userKey, "hex"),
+      ivBuffer
+    );
+    let decrypted = decipher.update(encryptedData, "hex", "utf-8");
+    decrypted += decipher.final("utf-8");
+    return decrypted;
+  } catch {
+    return encryptedText;
+  }
+  
+}
 
 
 const GetNotes = async (req, res) => {
@@ -18,6 +48,8 @@ const GetNotes = async (req, res) => {
     const skip = (page - 1) * limit; // Calculate the number of records to skip
 
     const userId = req.user.id; // Get the authenticated user's ID
+    const userkey = req.user.userKey || process.env.Temp_UserKey;
+
 
     //console.log(userId);
     // Query notes for the authenticated user, with pagination
@@ -30,8 +62,16 @@ const GetNotes = async (req, res) => {
       return res.status(404).json({ message: "No notes found for this user" });
     }
 
+    
+    // Decrypt each note's content
+    const decryptedNotes = notes.map((note) => ({
+      ...note.toObject(),
+      title: decrypt(note.title, userkey),
+      details: decrypt(note.details, userkey),
+    }));
+
     // Return the notes to the client
-    res.status(200).json(notes);
+    res.status(200).json(decryptedNotes);
   } catch (error) {
     // Catch any errors and send a response with status 500
     console.error(error);
@@ -44,6 +84,11 @@ const GetNotes = async (req, res) => {
 const CreateNote = async (req, res) => {
   // Get the userId from the authenticated user (provided by the authenticateToken middleware)
   const userId = req.user.id;
+  const userkey = req.user.userKey || process.env.Temp_UserKey;
+
+  
+  //console.log("Testing Usrekey retrieval " + userkey);
+
   const { title, details } = req.body;
 
   let emptyFields = [];
@@ -75,22 +120,38 @@ const CreateNote = async (req, res) => {
       .json({ error: "Details cannot be more than 1000 characters" });
   }
 
+  //Encrypt Title and Details of the Note
+
+  const en_title = encrypt(title, userkey);
+  const en_details = encrypt(details, userkey);
+
+  //console.log("Testing here " + en_title);
   // Create the note with the authenticated user's ID
   try {
     const note = await Note.create({
       userId, // Attach the userId to the note
-      title,
-      details,
+      title: en_title,
+      details: en_details,
     });
 
-    res.status(201).json(note); // Return the created note
+    // Return the note's database ID and unencrypted title and details
+    res.status(201).json({
+      _id: note._id,
+      userId: note.userId,
+      title, // Original, unencrypted title
+      details, // Original, unencrypted details
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+    });
+
+
   } catch (error) {
     res.status(400).json({ error: error.message }); // Handle errors
   }
 };
 
 
-
+// This is depricated, (not using encryption)
 const GetSingleNote = async (req, res) => {
   const { id } = req.params;
 
@@ -118,7 +179,7 @@ const GetSingleNote = async (req, res) => {
   }
 };
 
-
+// This is depricated, (not using encryption)
 const GetNotesByTitle = async (req, res) => {
   const { title } = req.query; // Access title from the query string
 
@@ -185,7 +246,7 @@ const UpdateSingleNote = async (req, res) => {
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ error: "No such Note" });
   }
-
+  const userkey = req.user.userKey || process.env.Temp_UserKey;
   const { title, details } = req.body;
 
   let emptyFields = [];
@@ -217,11 +278,16 @@ const UpdateSingleNote = async (req, res) => {
       .json({ error: "Details cannot be more than 1000 characters" });
   }
 
+  //Encrypt Title and Details of the Note
+
+  const en_title = encrypt(title, userkey);
+  const en_details = encrypt(details, userkey);
+
   try {
     // Find and update the note only if it belongs to the logged-in user
     const note = await Note.findOneAndUpdate(
       { _id: id, userId: req.user.id }, // Check if the note belongs to the logged-in user
-      { title, details }, // Only update the title and details
+      { title: en_title, details: en_details }, // Only update the title and details
       { new: true } // Return the updated note
     );
 
@@ -232,7 +298,16 @@ const UpdateSingleNote = async (req, res) => {
         .json({ error: "No such Note found or not authorized" });
     }
 
-    res.status(200).json(note);
+    // Return the note's database ID and unencrypted title and details
+    res.status(201).json({
+      _id: note._id,
+      userId: note.userId,
+      title, // Original, unencrypted title
+      details, // Original, unencrypted details
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+    });
+    
   } catch (error) {
     res
       .status(500)

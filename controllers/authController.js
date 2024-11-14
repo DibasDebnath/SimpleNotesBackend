@@ -2,6 +2,12 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/userModel"); // Assuming you have a User model
 const validator = require("validator");
+const crypto = require("crypto");
+
+function generateUserKey() {
+  return crypto.randomBytes(32).toString("hex"); // 32 bytes = 128 bits key for AES-256
+}
+
 // Sign-up: Register a new user
 const register = async (req, res) => {
   const { username, email, password } = req.body;
@@ -16,10 +22,26 @@ const register = async (req, res) => {
       return res.status(400).json({ error: "Invalid email format" });
     }
 
-    if (username.length > 20) {
+    if (
+      !validator.isStrongPassword(password, {
+        minLength: 6,
+        minUppercase: 1,
+        minNumbers: 1,
+        minSymbols: 0,
+      })
+    ) {
       return res
         .status(400)
-        .json({ error: "Username Must be less than 20 characters " });
+        .json({
+          error:
+            "Password Must be at least 6 Characters long and contain at least 1 uppercase letter and a number",
+        });
+    }
+
+    if (username.length > 10) {
+      return res
+        .status(400)
+        .json({ error: "Display Name Must be less than 10 characters " });
     }
 
     // Check if user already exists
@@ -32,8 +54,16 @@ const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    //Create userKey for encryption
+    const userKey = generateUserKey();
+
     // Create new user
-    const user = new User({ username, email, password: hashedPassword });
+    const user = new User({
+      username,
+      email,
+      password: hashedPassword,
+      userKey,
+    });
     await user.save();
 
     // Generate JWT token
@@ -48,9 +78,13 @@ const register = async (req, res) => {
   }
 };
 
+
+
 // Sign-in: Authenticate user
 const login = async (req, res) => {
   const { email, password } = req.body;
+
+  //console.log(generateUserKey());
 
   try {
     // Validate input
@@ -174,10 +208,10 @@ const updateUsername = async (req, res) => {
       return res.status(400).json({ error: "Username is required" });
     }
 
-    if (username.length > 20) {
+    if (username.length > 10) {
       return res
         .status(400)
-        .json({ error: "Username Must be less than 20 characters " });
+        .json({ error: "Display Name Must be less than 10 characters " });
     }
 
     // Find the user and update the username
@@ -207,6 +241,20 @@ const updatePassword = async (req, res) => {
     
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ error: "Both current and new passwords are required" });
+    }
+
+    if (
+      !validator.isStrongPassword(newPassword, {
+        minLength: 6,
+        minUppercase: 1,
+        minNumbers: 1,
+        minSymbols: 0,
+      })
+    ) {
+      return res.status(400).json({
+        error:
+          "Password Must be at least 6 Characters long and contain at least 1 uppercase letter and a number",
+      });
     }
 
     // Find the user by their ID
